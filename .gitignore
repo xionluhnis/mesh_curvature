@@ -28,4 +28,6 @@
 *.out
 *.app
 
+*.tsv
+
 build/*

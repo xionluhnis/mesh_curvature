@@ -16,18 +16,7 @@
 #include <iostream>
 #include <string>
 
-void usage(const std::string &basename) {
-  std::cout << "Usage: " << basename << " mesh [mean | gauss | k1 | k2 | k | all] [show]\n";
-  std::cout << "   mean:   mean curvature\n";
-  std::cout << "   gauss:  gaussian curvature\n";
-  std::cout << "   k1:     first main curvature component\n";
-  std::cout << "   k2:     second main curvature component\n";
-  std::cout << "   k:      both main curvature components\n";
-  std::cout << "   all:    all variants\n";
-  std::cout << "\n";
-  std::cout << "   show: whether to display the mesh curvature (default, 1) or not (0)\n";
-  std::cout << "\n";
-}
+void usage(const std::string &basename);
 
 Eigen::MatrixXd V;
 Eigen::MatrixXd UV;
@@ -35,25 +24,7 @@ Eigen::MatrixXd N;
 Eigen::MatrixXi F;
 Eigen::MatrixXi Fuv, Fn;
 
-void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
-  if(curv.rows() != UV.rows()){
-    std::cerr << "UV has " << UV.rows() << " >< " << curv.rows() << " from curvature\n";
-    return;
-  }
-  
-  std::ofstream out(filename);
-  if(!out.is_open()){
-    std::cerr << "Cannot write to " << filename << "\n";
-    return;
-  }
-
-  for(int i = 0; i < curv.rows(); ++i){
-    if(i > 0) out << "\n";
-    out << UV(i, 0) << "\t" << UV(i, 1) << "\t" << curv(i);
-  }
-
-  std::cout << "Saved curvature to " << filename << "\n";
-}
+void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename);
 
 int main(int argc, char *argv[])
 {
@@ -108,6 +79,15 @@ int main(int argc, char *argv[])
   if(!writeData){
     igl::read_triangle_mesh(filename, V, F);
   }
+
+  // Information
+  std::cout << "V: " << V.rows() << "," << V.cols() << "\n";
+  std::cout << "F: " << F.rows() << "," << F.cols() << "\n";
+  std::cout << "N: " << N.rows() << "," << N.cols() << "\n";
+  std::cout << "UV: " << UV.rows() << "," << UV.cols() << "\n";
+  std::cout << "Fuv: " << Fuv.rows() << "," << Fuv.cols() << "\n";
+  std::cout << "Fn: " << Fn.rows() << "," << Fn.cols() << "\n";
+
   // Alternative discrete mean curvature
   MatrixXd HN;
   SparseMatrix<double> L,M,Minv;
@@ -194,3 +174,64 @@ int main(int argc, char *argv[])
     }
   }
 }
+
+void usage(const std::string &basename) {
+  std::cout << "Usage: " << basename << " mesh [mean | gauss | k1 | k2 | k | all] [show]\n";
+  std::cout << "   mean:   mean curvature\n";
+  std::cout << "   gauss:  gaussian curvature\n";
+  std::cout << "   k1:     first main curvature component\n";
+  std::cout << "   k2:     second main curvature component\n";
+  std::cout << "   k:      both main curvature components\n";
+  std::cout << "   all:    all variants\n";
+  std::cout << "\n";
+  std::cout << "   show: whether to display the mesh curvature (default, 1) or not (0)\n";
+  std::cout << "\n";
+}
+
+void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
+  
+  enum {
+    VertexUV = 0,
+    FaceUV   = 1,
+    Invalid  = 2
+  } mode = Invalid;
+  if(curv.rows() == UV.rows())
+    mode = VertexUV;
+  else if(curv.rows() == V.rows() && Fuv.rows() == F.rows())
+    mode = FaceUV;
+
+  if(mode == Invalid){
+    std::cerr << "Unsupported UV data:\n";
+    std::cerr << "UV=" << UV.rows() << "," << UV.cols() << "\n";
+    std::cerr << "Fuv=" << Fuv.rows() << "," << Fuv.cols() << "\n";
+    std::cerr << "Curv=" << curv.rows() << " from curvature\n";
+    return;
+  }
+  
+  std::ofstream out(filename);
+  if(!out.is_open()){
+    std::cerr << "Cannot write to " << filename << "\n";
+    return;
+  }
+
+  if(mode == VertexUV){
+    // UV per vertex
+    for(int i = 0; i < curv.rows(); ++i){
+      if(i > 0) out << "\n";
+      out << UV(i, 0) << "\t" << UV(i, 1) << "\t" << curv(i);
+    }
+  } else {
+    // UV per vertex per face
+    for(int f = 0; f < Fuv.rows(); ++f){
+      for(int i = 0; i < Fuv.cols(); ++i){
+        if(f > 0 || i > 0) out << "\n";
+        int uv_idx = Fuv(f, i);
+        int v_idx  = F(f, i);
+        out << UV(uv_idx, 0) << "\t" << UV(uv_idx, 1) << "\t" << curv(v_idx);
+      }
+    }
+  }
+
+  std::cout << "Saved curvature to " << filename << "\n";
+}
+
