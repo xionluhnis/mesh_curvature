@@ -1,34 +1,196 @@
+#include <igl/avg_edge_length.h>
+#include <igl/cotmatrix.h>
+#include <igl/invert_diag.h>
+#include <igl/massmatrix.h>
+#include <igl/parula.h>
+#include <igl/per_corner_normals.h>
+#include <igl/per_face_normals.h>
+#include <igl/per_vertex_normals.h>
+#include <igl/principal_curvature.h>
+#include <igl/readOBJ.h>
+#include <igl/readPLY.h>
+#include <igl/read_triangle_mesh.h>
 #include <igl/viewer/Viewer.h>
+
+#include <fstream>
+#include <iostream>
+#include <string>
+
+void usage(const std::string &basename) {
+  std::cout << "Usage: " << basename << " mesh [mean | gauss | k1 | k2 | k | all] [show]\n";
+  std::cout << "   mean:   mean curvature\n";
+  std::cout << "   gauss:  gaussian curvature\n";
+  std::cout << "   k1:     first main curvature component\n";
+  std::cout << "   k2:     second main curvature component\n";
+  std::cout << "   k:      both main curvature components\n";
+  std::cout << "   all:    all variants\n";
+  std::cout << "\n";
+  std::cout << "   show: whether to display the mesh curvature (default, 1) or not (0)\n";
+  std::cout << "\n";
+}
+
+Eigen::MatrixXd V;
+Eigen::MatrixXd UV;
+Eigen::MatrixXd N;
+Eigen::MatrixXi F;
+Eigen::MatrixXi Fuv, Fn;
+
+void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
+  if(curv.rows() != UV.rows()){
+    std::cerr << "UV has " << UV.rows() << " >< " << curv.rows() << " from curvature\n";
+    return;
+  }
+  
+  std::ofstream out(filename);
+  if(!out.is_open()){
+    std::cerr << "Cannot write to " << filename << "\n";
+    return;
+  }
+
+  for(int i = 0; i < curv.rows(); ++i){
+    if(i > 0) out << "\n";
+    out << UV(i, 0) << "\t" << UV(i, 1) << "\t" << curv(i);
+  }
+
+  std::cout << "Saved curvature to " << filename << "\n";
+}
 
 int main(int argc, char *argv[])
 {
-  // Inline mesh of a cube
-  const Eigen::MatrixXd V= (Eigen::MatrixXd(8,3)<<
-    0.0,0.0,0.0,
-    0.0,0.0,1.0,
-    0.0,1.0,0.0,
-    0.0,1.0,1.0,
-    1.0,0.0,0.0,
-    1.0,0.0,1.0,
-    1.0,1.0,0.0,
-    1.0,1.0,1.0).finished();
-  const Eigen::MatrixXi F = (Eigen::MatrixXi(12,3)<<
-    1,7,5,
-    1,3,7,
-    1,4,3,
-    1,2,4,
-    3,8,7,
-    3,4,8,
-    5,7,8,
-    5,8,6,
-    1,5,6,
-    1,6,2,
-    2,6,8,
-    2,8,4).finished().array()-1;
+  using namespace Eigen;
 
-  // Plot the mesh
-  igl::viewer::Viewer viewer;
-  viewer.data.set_mesh(V, F);
-  viewer.data.set_face_based(true);
-  viewer.launch();
+  std::string filename;
+  if(argc > 1) {
+    filename = argv[1];
+  } else {
+    usage(argv[0]);
+    std::cerr << "Required mesh filename missing!\n";
+    return 1;
+  }
+
+  enum CurvatureType {
+    None  = 0,
+    Mean  = 1,
+    Gauss = 2,
+    K1    = 3,
+    K2    = 4,
+    K     = 5,
+    All   = 6
+  } curvType = None;
+  if(argc > 2) {
+    std::string curvStr = argv[2];
+    if(curvStr == "mean")       curvType = Mean;
+    else if(curvStr == "gauss") curvType = Gauss;
+    else if(curvStr == "k1")    curvType = K1;
+    else if(curvStr == "k2")    curvType = K2;
+    else if(curvStr == "k")     curvType = K;
+    else if(curvStr == "all")   curvType = All;
+    else {
+      usage(argv[0]);
+      std::cerr << "Invalid curvature type: " << curvStr << "\n";
+      return 1;
+    }
+  }
+
+  bool show = true;
+  if(argc > 3) {
+    show = argv[3] == "1";
+  }
+
+  bool writeData = false;
+  // Load a mesh, can only output data for OBJ / PLY with UV data
+  std::string fileExt = filename.substr(filename.size() - 4);
+  if(fileExt == ".obj" || fileExt == ".OBJ") {
+    writeData = igl::readOBJ(filename, V, UV, N, F, Fuv, Fn);
+  } else if(fileExt == ".ply" || fileExt == ".PLY") {
+    writeData = igl::readPLY(filename, V, F, N, UV);
+  }
+  if(!writeData){
+    igl::read_triangle_mesh(filename, V, F);
+  }
+  // Alternative discrete mean curvature
+  MatrixXd HN;
+  SparseMatrix<double> L,M,Minv;
+  igl::cotmatrix(V,F,L);
+  igl::massmatrix(V,F,igl::MASSMATRIX_TYPE_VORONOI,M);
+  igl::invert_diag(M,Minv);
+  // Laplace-Beltrami of position
+  HN = -Minv*(L*V);
+  // Extract magnitude as mean curvature
+  VectorXd H = HN.rowwise().norm();
+
+  // Compute curvature directions via quadric fitting
+  MatrixXd PD1,PD2;
+  VectorXd PV1,PV2;
+  igl::principal_curvature(V,F,PD1,PD2,PV1,PV2);
+  // mean curvature
+  H = 0.5*(PV1+PV2);
+  // gaussian curvature
+  VectorXd G = PV1 * PV2;
+
+
+  if(show){
+    igl::viewer::Viewer viewer;
+    viewer.data.set_mesh(V, F);
+  
+    // Compute pseudocolor
+    MatrixXd C;
+    VectorXd *curvature = &H;
+    switch(curvType){
+      case K1: curvature = &PV1; break;
+      case K2: curvature = &PV2; break;
+      case Gauss: curvature = &G; break;
+      default:
+      case Mean: curvature = &H; break;
+    }
+    igl::parula(*curvature, true, C);
+    viewer.data.set_colors(C);
+  
+    // Average edge length for sizing
+    const double avg = igl::avg_edge_length(V,F);
+  
+    // Draw a blue segment parallel to the minimal curvature direction
+    const RowVector3d red(0.8,0.2,0.2),blue(0.2,0.2,0.8);
+    viewer.data.add_edges(V + PD1*avg, V - PD1*avg, blue);
+  
+    // Draw a red segment parallel to the maximal curvature direction
+    viewer.data.add_edges(V + PD2*avg, V - PD2*avg, red);
+  
+    // Hide wireframe
+    viewer.core.show_lines = false;
+  
+    viewer.launch();
+  } else if(!writeData){
+    std::cerr << "No UV available in " << filename << "!\n";
+    return 1;
+  }
+
+  if(writeData){
+    switch(curvType){
+      case Mean:
+        writeCurvature(H, filename + "-H.tsv");
+        break;
+      case Gauss:
+        writeCurvature(G, filename + "-G.tsv");
+        break;
+      case K1:
+        writeCurvature(PV1, filename + "-K1.tsv");
+        break;
+      case K2:
+        writeCurvature(PV2, filename + "-K2.tsv");
+        break;
+      case K:
+        writeCurvature(PV1, filename + "-K1.tsv");
+        writeCurvature(PV2, filename + "-K2.tsv");
+        break;
+      case All:
+        writeCurvature(H, filename + "-H.tsv");
+        writeCurvature(G, filename + "-G.tsv");
+        writeCurvature(PV1, filename + "-K1.tsv");
+        writeCurvature(PV2, filename + "-K2.tsv");
+        break;
+      default:
+        break;
+    }
+  }
 }
