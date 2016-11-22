@@ -24,7 +24,8 @@ Eigen::MatrixXd N;
 Eigen::MatrixXi F;
 Eigen::MatrixXi Fuv, Fn;
 
-void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename);
+template <typename Mat>
+void writeCurvature( const Mat &curv, const std::string &filename);
 
 int main(int argc, char *argv[])
 {
@@ -155,19 +156,25 @@ int main(int argc, char *argv[])
         break;
       case K1:
         writeCurvature(PV1, filename + "-K1.tsv");
+        writeCurvature(PD1, filename + "-K1d.tsv");
         break;
       case K2:
         writeCurvature(PV2, filename + "-K2.tsv");
+        writeCurvature(PD2, filename + "-K2d.tsv");
         break;
       case K:
         writeCurvature(PV1, filename + "-K1.tsv");
         writeCurvature(PV2, filename + "-K2.tsv");
+        writeCurvature(PD1, filename + "-K1d.tsv");
+        writeCurvature(PD2, filename + "-K2d.tsv");
         break;
       case All:
         writeCurvature(H, filename + "-H.tsv");
         writeCurvature(G, filename + "-G.tsv");
         writeCurvature(PV1, filename + "-K1.tsv");
         writeCurvature(PV2, filename + "-K2.tsv");
+        writeCurvature(PD1, filename + "-K1d.tsv");
+        writeCurvature(PD2, filename + "-K2d.tsv");
         break;
       default:
         break;
@@ -188,7 +195,8 @@ void usage(const std::string &basename) {
   std::cout << "\n";
 }
 
-void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
+template <typename Mat>
+void writeCurvature( const Mat &curv, const std::string &filename) {
   
   enum {
     VertexUV = 0,
@@ -204,7 +212,7 @@ void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
     std::cerr << "Unsupported UV data:\n";
     std::cerr << "UV=" << UV.rows() << "," << UV.cols() << "\n";
     std::cerr << "Fuv=" << Fuv.rows() << "," << Fuv.cols() << "\n";
-    std::cerr << "Curv=" << curv.rows() << " from curvature\n";
+    std::cerr << "Curv=" << curv.rows() << "," << curv.cols() << " from curvature\n";
     return;
   }
   
@@ -218,7 +226,9 @@ void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
     // UV per vertex
     for(int i = 0; i < curv.rows(); ++i){
       if(i > 0) out << "\n";
-      out << UV(i, 0) << "\t" << UV(i, 1) << "\t" << curv(i);
+      out << UV(i, 0) << "\t" << UV(i, 1);
+      for(int j = 0; j < curv.cols(); ++j)
+        out << "\t" << curv(i, j);
     }
   } else {
     // UV per vertex per face
@@ -227,7 +237,9 @@ void writeCurvature( const Eigen::VectorXd &curv, const std::string &filename) {
         if(f > 0 || i > 0) out << "\n";
         int uv_idx = Fuv(f, i);
         int v_idx  = F(f, i);
-        out << UV(uv_idx, 0) << "\t" << UV(uv_idx, 1) << "\t" << curv(v_idx);
+        out << UV(uv_idx, 0) << "\t" << UV(uv_idx, 1);
+        for(int j = 0; j < curv.cols(); ++j)
+          out << "\t" << curv(v_idx, j);
       }
     }
   }
