@@ -1,6 +1,18 @@
 function [ tex ] = generate_texture( data, resolution, interp )
-%GENERATE_TEXTURE Summary of this function goes here
-%   Detailed explanation goes here
+%GENERATE_TEXTURE Interpolate texture information from samples
+%
+% INPUT
+%   - data          (N,d)   sampled information
+%   - resolution    (1,1)   texture resolution (defaults to 128)
+%   - interp        (char)  interpolation method (nearest, linear)
+%
+% OUTPUT
+%   - tex           (T,T)   interpolated texture where T=resolution
+% 
+% WARNING
+%   Linear interpolation does hyper-plane fitting using triangulation,
+%   which seems very slow (and single-threaded) on matlab.
+%
 
     [~, d] = size(data);
 
