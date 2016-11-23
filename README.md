@@ -16,7 +16,7 @@ This should find and build the dependencies and create a `mesh_curvature` binary
 
 From within the `build` directory just issue:
 
-    ./mesh_curvature
+    ./mesh_curvature ../models/piggy.obj
 
 A glfw app should launch displaying a 3D cube.
 
@@ -30,6 +30,23 @@ If you clone the repository recursively, this should be taken care of:
 
     git clone --recursive https://github.com/xionluhnis/mesh_curvature.git
 
+## Generating texture data
+
+    ./mesh_curvature ../models/piggy.obj all 0
+
+will creates the following files in `models`:
+ * `piggy.obj-H.tsv` - the mean curvature at every corner
+ * `piggy.obj-G.tsv` - the gaussian curvature at every corner
+ * `piggy.obj-Kx.tsv` - the X=1|2-th principal curvature at every corner
+ * `piggy.obj-Kxd.tsv` - the X=1|2-th principal curvature 3d vectors at every corner
+
+These tsv files are just list of values at corners (vertex per face).
+To generate a full image, use matlab:
+
+    K1 = dlmread('models/piggy.obj-K1.tsv');
+    texK1 = generate_texture(K1, 1024);
+
+which you can then save as a texture image.
 
 ## License
 
